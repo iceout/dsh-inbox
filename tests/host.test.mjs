@@ -3,38 +3,115 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 
-import { apply, createSessionFactory } from '../lib/index.js'
+import { apply } from '../lib/index.js'
+import { createInboxSessions } from '../lib/inbox-session.js'
 import { createHandlers, ROUTES } from '../lib/routes.js'
 import { StateStore } from '../lib/store.js'
 import { createProposeTool } from '../lib/tool.js'
-import { sandbox, setup } from './helpers.mjs'
+import { fakeRegistry, sandbox, setup } from './helpers.mjs'
 
-test('session factory: meeting dir + mapping; never renames on id mismatch', async t => {
+function fakeSessions() {
+  const summaries = new Map()
+  return {
+    summaries,
+    calls: [],
+    async create(request) {
+      this.calls.push(request)
+      summaries.set(request.sessionId, { sessionId: request.sessionId, blank: true })
+      return { sessionId: request.sessionId }
+    },
+    async list() { return { items: [...summaries.values()] } },
+  }
+}
+
+function lifecycle(box, overrides = {}) {
+  const store = new StateStore({ dshHome: box.dshHome })
+  const registry = fakeRegistry()
+  registry.get = id => registry.items.find(item => item.id === id)
+  registry.delete = async id => {
+    const index = registry.items.findIndex(item => item.id === id)
+    if (index >= 0) registry.items.splice(index, 1)
+    return index >= 0
+  }
+  const sessionController = overrides.sessionController ?? fakeSessions()
+  const sessions = createInboxSessions({ store, sessionController, registry, log: () => {} })
+  return { store, registry, sessionController, sessions }
+}
+
+test('new chat: blank session sits in a temporary workspace on its own meeting dir', async t => {
   const box = await sandbox()
   t.after(box.cleanup)
-  const store = new StateStore({ dshHome: box.dshHome })
-  const calls = []
-  const make = createSessionFactory({
-    store,
-    sessionController: { async create(request) { calls.push(request); return { sessionId: 'other-id' } } },
-    log: () => {},
-  })
-  const { sessionId, cwd } = await make()
-  assert.equal(sessionId, 'other-id')
-  assert.equal(calls[0].cwd, cwd)
-  assert.equal(calls[0].workspaceId, undefined)
-  assert.equal(path.basename(cwd), calls[0].sessionId, 'directory keeps the requested id')
+  const { store, registry, sessionController, sessions } = lifecycle(box)
+  const { sessionId, cwd, reused } = await sessions.create()
+  assert.equal(reused, false)
+  assert.equal(sessionController.calls[0].workspaceId, 'ws-1')
+  assert.equal(sessionController.calls[0].cwd, undefined)
+  assert.equal(registry.items[0].path, cwd)
+  assert.equal(registry.items[0].title, '新对话')
   assert.equal((await fs.promises.stat(cwd)).mode & 0o777, 0o700)
-  assert.deepEqual((await store.loadMeeting('other-id')).cwd, cwd)
+  const meeting = await store.loadMeeting(sessionId)
+  assert.equal(meeting.tempWorkspaceId, 'ws-1')
+  assert.equal(meeting.settled, false)
 })
 
-test('session factory removes the empty meeting dir when creation fails', async t => {
+test('a second click reuses the still-blank Inbox session', async t => {
   const box = await sandbox()
   t.after(box.cleanup)
-  const store = new StateStore({ dshHome: box.dshHome })
-  const make = createSessionFactory({ store, sessionController: { async create() { throw new Error('boom') } }, log: () => {} })
-  await assert.rejects(make(), /boom/)
+  const { registry, sessions } = lifecycle(box)
+  const first = await sessions.create()
+  const second = await sessions.create()
+  assert.equal(second.sessionId, first.sessionId)
+  assert.equal(second.reused, true)
+  assert.equal(registry.items.length, 1)
+})
+
+test('first turn/start settles: temporary workspace removed, cwd kept, next click creates new', async t => {
+  const box = await sandbox()
+  t.after(box.cleanup)
+  const { store, registry, sessionController, sessions } = lifecycle(box)
+  const first = await sessions.create()
+  assert.equal(sessions.onTurnStart('someone-else'), undefined)
+  await sessions.onTurnStart(first.sessionId)
+  assert.equal(registry.items.length, 0)
+  const meeting = await store.loadMeeting(first.sessionId)
+  assert.equal(meeting.settled, true)
+  assert.equal(meeting.tempWorkspaceId, undefined)
+  assert.equal(meeting.cwd, first.cwd)
+  assert.equal(await fs.promises.stat(first.cwd).then(s => s.isDirectory()), true)
+
+  sessionController.summaries.get(first.sessionId).blank = false
+  const second = await sessions.create()
+  assert.notEqual(second.sessionId, first.sessionId)
+})
+
+test('startup sweep settles sessions that started a turn while unobserved', async t => {
+  const box = await sandbox()
+  t.after(box.cleanup)
+  const env = lifecycle(box)
+  const first = await env.sessions.create()
+  env.sessionController.summaries.get(first.sessionId).blank = false
+  const restarted = createInboxSessions({ store: env.store, sessionController: env.sessionController, registry: env.registry, log: () => {} })
+  await restarted.sweep()
+  assert.equal(env.registry.items.length, 0)
+  assert.equal((await env.store.loadMeeting(first.sessionId)).settled, true)
+})
+
+test('creation failure rolls back the temporary workspace and meeting dir', async t => {
+  const box = await sandbox()
+  t.after(box.cleanup)
+  const { registry, sessions } = lifecycle(box, { sessionController: { async create() { throw new Error('boom') }, async list() { return { items: [] } } } })
+  await assert.rejects(sessions.create(), /boom/)
+  assert.equal(registry.items.length, 0)
   assert.deepEqual(await fs.promises.readdir(path.join(box.dshHome, 'inbox')), [])
+})
+
+test('settled Inbox session can propose; its cwd is the meeting dir', async t => {
+  const box = await sandbox()
+  t.after(box.cleanup)
+  const { store, sessions } = lifecycle(box)
+  const { sessionId, cwd } = await sessions.create()
+  await sessions.onTurnStart(sessionId)
+  assert.equal((await store.loadMeeting(sessionId)).cwd, cwd)
 })
 
 test('tool uses the calling agent id and exposes presentation meta', async t => {
@@ -87,11 +164,13 @@ test('apply registers tool, routes and the optional skill sub-plugin', () => {
     tools: { register: def => { registered.tools.push(def.name); return () => {} } },
     connection: { fetch: { register: route => { registered.routes.push(route.path); return () => {} } } },
     workspaceRegistry: { list: () => [], create: async () => ({ id: 'w' }) },
-    sessionController: { create: async () => ({ sessionId: 's' }) },
+    sessionController: { create: async () => ({ sessionId: 's' }), list: async () => ({ items: [] }) },
     plugin: p => registered.plugins.push(p),
+    on: (name, fn) => { registered.events = [...(registered.events ?? []), name]; return () => {} },
   }
   apply(ctx, {})
   assert.deepEqual(registered.tools, ['project_propose'])
   assert.deepEqual(registered.routes.sort(), Object.values(ROUTES).sort())
   assert.equal(registered.plugins[0].inject[0], 'skills')
+  assert.deepEqual(registered.events, ['session/event'])
 })

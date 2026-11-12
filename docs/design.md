@@ -658,6 +658,7 @@ slug 由 agent 在 `title` 之外不单独提供时，host 从 title 生成 ASCI
 | skill | 名为 `inbox-project-kickoff`，通过 `ctx.plugin({ inject: ['skills'] })` 子插件注册，skills 服务不存在时自动跳过 | 不让 skills 成为硬依赖（G9） |
 | sessionId 格式 | 路由只接受 `^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`；DSH 实际为 UUID | 单段安全路径即可 |
 | 首个项目会话 id | `startSession` 后从 `workspaces.list` 取新工作区的 session id 回写 `opened` | `startSession` 不返回 id |
+| **Inbox 会话的空白期**（G2 实测不通过） | 新对话先挂在以自己会议目录注册的**临时工作区**（标题「新对话」）上；host 监听 `session/event` 的第一个 `turn/start` 时删除该临时注册（目录与会话日志保留），会话落到 Ungrouped；仍空白的 Inbox 会话被下次点击复用；启动时扫描补做落地 | DSH 把“空白（无 `turn/start`）且无工作区”的会话当作“工作区已删除”，禁用输入框（`ui-conversation/src/client/skeleton/ConversationContent.tsx`：`inert = hero && chipTitle === undefined`）；空白判定只看 `turn/start`（`session-controller/src/list.ts:51`），不开始一轮无法绕开；删除工作区注册不会关闭当前会话（只有归档会） |
 | 「修改」预填 | `sessions.binding(id).ctx.get('conversation').input.for(ctx).setDraft()`；失败退化为剪贴板 | 同 §5.2 |
 
 测试：`npm test` 共 31 个（路径校验、状态机、6 个崩溃点接管、路由 id 校验、客户端辅助函数）。Phase 0 门槛 G1–G11 仍需在真实 DSH 上验证。
