@@ -1,0 +1,7 @@
+# dsh-inbox: "New chat" without a project, and a reviewed path from discussion to a new project.
+- insert:
+    - id: inbox
+      name: dsh-inbox
+      # config:
+      #   defaultProjectRoot: ~/projects   # used when no existing workspace suggests a parent folder
+      #   writeAgentsPointer: true         # one-line AGENTS.md pointing to BRIEF.md

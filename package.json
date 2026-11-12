@@ -1,0 +1,54 @@
+{
+  "name": "dsh-inbox",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Inbox conversations for DeepSeek Harness: start a chat without a project, then turn the discussion into a new project with a reviewed BRIEF.md.",
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "inbox",
+    "project"
+  ],
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/*.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test tests/",
+    "check": "node scripts/check.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.5 <0.3.0"
+  }
+}
