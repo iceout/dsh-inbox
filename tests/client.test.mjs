@@ -34,7 +34,7 @@ function observable(initial) {
   }
 }
 
-test('registers footer entry and the project_propose tool view', () => {
+test('registers footer entry, the project_propose row and the composer dock', () => {
   const mod = load()
   const registrations = []
   const ctx = {
@@ -43,7 +43,7 @@ test('registers footer entry and the project_propose tool view', () => {
     slots: { inject: (_name, fn) => fn(), register: (spec, component) => registrations.push({ spec, component }) },
   }
   mod.apply(ctx)
-  assert.deepEqual(registrations.map(r => r.spec.name), ['sidebar.footer.action', 'tool.call.toolview'])
+  assert.deepEqual(JSON.parse(JSON.stringify(registrations.map(r => r.spec.name))), ['sidebar.footer.action', 'tool.call.toolview', 'conversation.input.dock'])
   assert.equal(registrations[1].spec.key, 'project_propose')
   assert.deepEqual(JSON.parse(JSON.stringify([...mod.inject].sort())), ['locale', 'sessions', 'slots', 'uiWorkspace', 'workspaces'])
 })

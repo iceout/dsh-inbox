@@ -166,3 +166,17 @@ test('soft warnings do not block', async t => {
   assert.ok(out.warnings.includes('brief-short'))
   await env.service.create(env.sessionId, out.proposalId)
 })
+
+test('latest returns the newest non-superseded proposal, null for non-Inbox sessions', async t => {
+  const env = await setup()
+  t.after(env.cleanup)
+  assert.equal(await env.service.latest(env.sessionId), null)
+  assert.equal(await env.service.latest('5e40d8e8-4b85-4ed8-97fd-e9bae9793efb'), null)
+  await env.service.propose(env.sessionId, { title: 'One', path: path.join(env.code, 'one') })
+  await new Promise(resolve => setTimeout(resolve, 5))
+  const second = await env.service.propose(env.sessionId, { title: 'Two', path: path.join(env.code, 'two') })
+  const latest = await env.service.latest(env.sessionId)
+  assert.equal(latest.id, second.proposalId)
+  assert.equal(latest.state, 'proposed')
+  await assert.rejects(env.service.latest('../x'), { code: 'bad-session-id' })
+})

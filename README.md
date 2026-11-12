@@ -5,7 +5,7 @@ English | [中文](README.zh.md)
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin for conversations that don't belong to a project yet.
 
 - **New chat** — a sidebar button that starts a real session that ends up in no workspace. Tools stay on (web search, files). While the chat is still empty it sits in a temporary workspace titled *新对话* (DSH disables the composer of an empty session that has no workspace); on the first message that temporary registration is removed and the chat moves to *Ungrouped*. An unused empty chat is reused by the next click.
-- **Turn it into a project** — when the discussion has converged, ask the agent to "create a project". It writes `BRIEF.draft.md` and calls `project_propose`; a preview card appears in the conversation. **You** click *Create project*; the plugin creates the directory, writes `BRIEF.md` (plus a one-line `AGENTS.md` pointer), registers the workspace and opens a new session there with a prefilled — not sent — kickoff message.
+- **Turn it into a project** — when the discussion has converged, ask the agent to "create a project". It writes `BRIEF.draft.md` and calls `project_propose`; a preview card appears above the composer (DSH folds a finished turn's tool calls, so the transcript only keeps a one-line summary). **You** click *Create project*; the plugin creates the directory, writes `BRIEF.md` (plus a one-line `AGENTS.md` pointer), registers the workspace and opens a new session there with a prefilled — not sent — kickoff message.
 
 The old conversation is never moved or copied. It stays in *Ungrouped*, and its card turns into *Created · Open project*.
 
